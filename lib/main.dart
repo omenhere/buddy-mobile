@@ -7,13 +7,11 @@ import 'services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID', null);
   runApp(MyApp());
 }
-
 
 class MyApp extends StatelessWidget {
   @override
@@ -80,15 +78,18 @@ class WaveClipper extends CustomClipper<Path> {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  Map<String, dynamic>? dashboardData;
-  int totalAmount = 3000000;
-  final TextEditingController _amountController = TextEditingController();
+  bool _isAddLoading = false;
+  bool _isReduceLoading = false;
 
-  Map<String, Color> expenseTypeColors = {
-    "Makanan dan Minuman": Colors.red,
-    "Kebutuhan Harian": Colors.green,
-    "Lainnya": Colors.grey,
-  };
+  Map<String, dynamic>? dashboardData;
+  List<Map<String, dynamic>> targets = [];
+  List<Map<String, dynamic>> history = [];
+  List<Map<String, dynamic>> expenseTypes = [];
+  Map<String, double> pieChartData = {};
+  Map<String, Color> expenseTypeColors = {};
+
+ 
+  final TextEditingController _amountController = TextEditingController();
 
   List<Color> availableColors = [
     const Color.fromARGB(255, 0, 0, 0),
@@ -98,219 +99,121 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Colors.purple,
   ];
 
-  List<Map<String, dynamic>> targets = [
-    {
-      "name": "Konser Blackpink",
-      "price": 1000000,
-      "saved": 0,
-      "disabled": false,
-    },
-    {"name": "Laptop", "price": 5000000, "saved": 0, "disabled": false},
-    {"name": "Hotel Bali", "price": 2000000, "saved": 0, "disabled": false},
-  ];
-
-  List<Map<String, dynamic>> purchaseHistory = [];
-
-  List<String> expenseTypes = ["Makanan dan Minuman", "Kebutuhan Harian"];
-  double dailyExpenseLimit = 0;
-
-  Map<String, double> expenseLimits = {
-    "Makanan dan Minuman": 0,
-    "Kebutuhan Harian": 0,
-  };
-
-  Map<String, double> categoryLimits = {
-    "Makanan dan Minuman": 0,
-    "Kebutuhan Harian": 0,
-  };
 
   @override
   void initState() {
     super.initState();
-    _loadCategoryLimits();
     _fetchDashboardData();
+    _fetchExpenseTypes();
+    _fetchHistory();
+    _fetchPieChartData();
+  }
+
+  Future<void> _fetchPieChartData() async {
+    try {
+      final data = await ApiService().getPieChartData();
+      print('Pie Chart Data: $data');
+      setState(() {
+        pieChartData = data;
+      });
+    } catch (e) {
+      print('Error fetching pie chart data: $e');
+    }
+  }
+
+  Future<void> _fetchHistory() async {
+    try {
+      final data = await ApiService().getHistory();
+      setState(() {
+        history = data;
+      });
+    } catch (e) {
+      print('Error fetching history: $e');
+    }
   }
 
   Future<void> _fetchDashboardData() async {
     try {
-      print('Memanggil API getDashboardData...');
       ApiService apiService = ApiService();
       var data = await apiService.getDashboardData();
-      print('API sukses, data: $data');
-      if (mounted) {
-        setState(() {
-          dashboardData = data;
-        });
-      }
+      setState(() {
+        dashboardData = data;
+        targets = List<Map<String, dynamic>>.from(data['targets'] ?? []);
+      });
     } catch (e) {
       print('Error fetching dashboard data: $e');
     }
   }
 
-  Future<void> _savePin(String pin) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_pin', pin);
-  }
-
-  Future<String?> _getPin() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('user_pin');
-  }
-
-  void _addAmount() {
-    if (_amountController.text.isNotEmpty) {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text("Konfirmasi"),
-            content: Text("Top up dari minimarket terdekat"),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup dialog
-                },
-                child: Text("Cancel"),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup dialog pertama
-                  _showBiometricPopup(); // Tampilkan pop-up sidik jari
-                },
-                child: Text("Lanjutkan"),
-              ),
-            ],
-          );
-        },
-      );
+  Future<void> _fetchExpenseTypes() async {
+    try {
+      ApiService apiService = ApiService();
+      var data = await apiService.getExpenseType();
+      setState(() {
+        expenseTypes = List<Map<String, dynamic>>.from(
+          data['expenseTypes'] ?? [],
+        );
+        // Update expenseTypeColors dari hex color API
+        expenseTypeColors = {
+          for (var type in expenseTypes)
+            type['name']: _hexToColor(type['color'] ?? "#888888"),
+        };
+      });
+    } catch (e) {
+      print('Error fetching expense types: $e');
     }
   }
 
-  void _showBiometricPopup() {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Verifikasi Sidik Jari",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              // Image.asset(
-              //   'assets/images/fingerprint.png', // Gambar sidik jari
-              //   width: 100,
-              //   height: 100,
-              // ),
-              SizedBox(height: 16),
-              Text(
-                "Silakan letakkan jari Anda pada sensor sidik jari.",
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup pop-up sidik jari
-                  _completeTransaction(); // Selesaikan transaksi
-                },
-                child: Text("Verifikasi Sidik Jari"),
-              ),
-              SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup pop-up sidik jari
-                  _showPinInputPopup(); // Tampilkan pop-up input PIN
-                },
-                child: Text(
-                  "Ganti ke Ketik PIN",
-                  style: TextStyle(fontSize: 14, color: Colors.blue),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+  Color _hexToColor(String hex) {
+    hex = hex.replaceFirst('#', '');
+    if (hex.length == 3) hex = hex.split('').map((c) => '$c$c').join();
+    return Color(int.parse('FF$hex', radix: 16));
   }
 
-  void _showPinInputPopup() {
-    final TextEditingController _pinController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Masukkan PIN",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: _pinController,
-                keyboardType: TextInputType.number,
-                obscureText: true, // Menyembunyikan teks (untuk PIN)
-                decoration: InputDecoration(
-                  labelText: "PIN",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_pinController.text.isNotEmpty) {
-                    // Ambil PIN yang tersimpan
-                    final savedPin = await _getPin();
-
-                    // Bandingkan PIN yang dimasukkan dengan PIN yang tersimpan
-                    if (_pinController.text == savedPin) {
-                      Navigator.of(context).pop(); // Tutup pop-up input PIN
-                      _completeTransaction(); // Selesaikan transaksi
-                    } else {
-                      // Tampilkan pesan error jika PIN salah
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("PIN salah. Transaksi dibatalkan."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  } else {
-                    // Tampilkan pesan error jika PIN kosong
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Silakan masukkan PIN."),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
-                child: Text("Verifikasi PIN"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+  void _addAmount() async {
+    if (_amountController.text.isNotEmpty) {
+      int amount = int.tryParse(_amountController.text) ?? 0;
+      if (amount > 0) {
+        setState(() => _isAddLoading = true);
+        try {
+          await ApiService().updateSaldo(amount, 'add');
+          await _fetchDashboardData();
+          _amountController.clear();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Saldo berhasil ditambah!")));
+        } catch (e) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Gagal menambah saldo.")));
+        } finally {
+          setState(() => _isAddLoading = false);
+        }
+      }
+    }
   }
 
-  void _completeTransaction() {
-    setState(() {
-      totalAmount += int.tryParse(_amountController.text) ?? 0;
-    });
-    _amountController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Transaksi berhasil!"),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  void _reduceAmount() async {
+    if (_amountController.text.isNotEmpty) {
+      int amount = int.tryParse(_amountController.text) ?? 0;
+      if (amount > 0) {
+        setState(() => _isReduceLoading = true);
+        try {
+          await ApiService().updateSaldo(amount, 'reduce');
+          await _fetchDashboardData();
+          _amountController.clear();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Saldo berhasil dikurangi!")));
+        } catch (e) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Gagal mengurangi saldo.")));
+        } finally {
+          setState(() => _isReduceLoading = false);
+        }
+      }
+    }
   }
 
   void _showAddTargetPopup() {
@@ -510,51 +413,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showPriceInputDialog(String itemName) {
     final TextEditingController _priceController = TextEditingController();
+    bool isLoading = false;
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Masukkan Harga untuk $itemName"),
-          content: TextField(
-            controller: _priceController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: "Harga (Rp)",
-              hintText: "Contoh: 5000000",
-              prefixText: "Rp",
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text("Batal"),
-            ),
-            TextButton(
-              onPressed: () {
-                if (_priceController.text.isNotEmpty) {
-                  setState(() {
-                    targets.add({
-                      "name": itemName,
-                      "price": int.tryParse(_priceController.text) ?? 0,
-                      "saved": 0,
-                      "disabled": false,
-                    });
-                  });
-                  Navigator.of(context).pop();
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Silakan masukkan harga terlebih dahulu"),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              child: Text("Simpan"),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("Masukkan Harga untuk $itemName"),
+              content: TextField(
+                controller: _priceController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: "Harga (Rp)",
+                  hintText: "Contoh: 5000000",
+                  prefixText: "Rp",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text("Batal"),
+                ),
+                ElevatedButton(
+                  onPressed:
+                      isLoading
+                          ? null
+                          : () async {
+                            if (_priceController.text.isNotEmpty) {
+                              setStateDialog(() => isLoading = true);
+                              try {
+                                await ApiService().addTarget({
+                                  "name": itemName,
+                                  "price": _priceController.text,
+                                });
+                                await _fetchDashboardData();
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Target berhasil ditambahkan!",
+                                    ),
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Gagal menambah target."),
+                                  ),
+                                );
+                              } finally {
+                                setStateDialog(() => isLoading = false);
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Silakan masukkan harga terlebih dahulu",
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                  child:
+                      isLoading
+                          ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : Text("Simpan"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -562,235 +500,519 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showAddProgressPopup(int index) {
     final TextEditingController _progressController = TextEditingController();
+    bool isLoading = false;
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Tambahkan Progress"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("Masukkan nominal untuk ${targets[index]["name"]}"),
-              TextField(
-                controller: _progressController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: "Nominal",
-                  border: OutlineInputBorder(),
-                ),
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("Tambahkan Progress"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("Masukkan nominal untuk ${targets[index]["name"]}"),
+                  TextField(
+                    controller: _progressController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Nominal",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Hapus target dan kembalikan uang ke totalAmount
-                setState(() {
-                  totalAmount +=
-                      (targets[index]["saved"] as num)
-                          .toInt(); // Konversi ke int
-                  targets.removeAt(index);
-                });
-                Navigator.of(context).pop(); // Tutup dialog
-              },
-              child: Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                if (_progressController.text.isNotEmpty) {
-                  setState(() {
-                    int nominal = int.tryParse(_progressController.text) ?? 0;
-                    if (totalAmount >= nominal) {
-                      targets[index]["saved"] += nominal;
-                      totalAmount -= nominal;
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Saldo tidak cukup!"),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  });
-                  Navigator.of(context).pop(); // Tutup dialog
-                }
-              },
-              child: Text("Tambahkan"),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed:
+                      isLoading
+                          ? null
+                          : () async {
+                            if (_progressController.text.isNotEmpty) {
+                              setStateDialog(() => isLoading = true);
+                              try {
+                                await ApiService().addTargetProgress(
+                                  targetId: targets[index]['id'].toString(),
+                                  progress: _progressController.text,
+                                );
+                                await _fetchDashboardData();
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Progress berhasil ditambahkan!",
+                                    ),
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Gagal menambah progress."),
+                                  ),
+                                );
+                              } finally {
+                                setStateDialog(() => isLoading = false);
+                              }
+                            }
+                          },
+                  child:
+                      isLoading
+                          ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : Text("Tambahkan"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
   void _showPurchaseConfirmation(int index) {
-    showModalBottomSheet(
+    final TextEditingController _pinController = TextEditingController();
+
+    showDialog(
       context: context,
       builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Verifikasi Sidik Jari",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        bool isLoading = false;
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              SizedBox(height: 16),
-              // Image.asset(
-              //   'assets/images/fingerprint.png', // Gambar sidik jari
-              //   width: 100,
-              //   height: 100,
-              // ),
-              SizedBox(height: 16),
-              Text(
-                "Silakan letakkan jari Anda pada sensor sidik jari.",
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
               ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup pop-up sidik jari
-                  _completePurchase(index); // Selesaikan pembelian
-                },
-                child: Text("Verifikasi"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    "Masukkan PIN",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 16),
+                  TextField(
+                    controller: _pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      labelText: "PIN",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : () async {
+                              if (_pinController.text.isNotEmpty) {
+                                setStateDialog(() => isLoading = true);
+                                bool isValid = false;
+                                try {
+                                  isValid = await ApiService().validatePin(
+                                    _pinController.text,
+                                  );
+                                } catch (e) {
+                                  isValid = false;
+                                }
+                                if (isValid) {
+                                  Navigator.of(
+                                    context,
+                                  ).pop(); // Tutup dialog PIN
+                                  _completePurchase(index); // Lanjutkan proses
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "PIN salah. Pembelian dibatalkan.",
+                                      ),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                                setStateDialog(() => isLoading = false);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Silakan masukkan PIN."),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: Size(double.infinity, 48),
+                    ),
+                    child:
+                        isLoading
+                            ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  "Memvalidasi...",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            )
+                            : Text("Verifikasi PIN"),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  void _completePurchase(int index) {
-    setState(() {
-      // Tambahkan ke riwayat pembelian dengan format yang konsisten
-      purchaseHistory.add({
-        'name': targets[index]['name'],
-        'category': 'Lainnya', // Kategori eksplisit
-        'amount': targets[index]['price'].toDouble(), // Gunakan harga penuh
-        'date': DateTime.now().toString(),
-        'type': 'target', // Tambahkan identifier khusus
-      });
-      targets.removeAt(index);
-    });
+  void _completePurchase(int index) async {
+    final targetId = targets[index]['id'].toString();
+    final targetName = targets[index]['name'];
+    final targetPrice = targets[index]['price'].toDouble();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("${purchaseHistory.last['name']} berhasil dibeli!"),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    try {
+      await ApiService().deleteTarget(targetId);
+      await _fetchDashboardData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("$targetName berhasil dibeli dan target dihapus!"),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gagal menghapus target setelah pembelian."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // if (dashboardData == null) {
-    //   return Scaffold(
-    //     backgroundColor: HexColor("#F7F9F8"),
-    //     body: Center(child: CircularProgressIndicator()),
-    //   );
-    // }
-
-    double saldo =
-        dashboardData?['saldo']?.toDouble() ?? totalAmount.toDouble();
-    double dailyLimit = dashboardData?['daily_limit']?.toDouble() ?? 0;
-    double todaySpending = dashboardData?['today_spending']?.toDouble() ?? 0;
-    double remaining = dashboardData?['sisa_harian']?.toDouble() ?? 0;
-    String level = dashboardData?['level'] ?? '';
-    double progress = (dashboardData?['level_progress']?.toDouble() ?? 0) / 100;
+    double saldo = (dashboardData?['saldo']?['amount'] ?? 0).toDouble();
+    double dailyLimit = (dashboardData?['daily_limit'] ?? 0).toDouble();
+    double todaySpending = (dashboardData?['today_spending'] ?? 0).toDouble();
+    double remaining = (dashboardData?['sisa_harian'] ?? 0).toDouble();
+    double progress =
+        ((dashboardData?['level_progress'] ?? 0).toDouble()) / 100;
 
     return Scaffold(
       backgroundColor: HexColor("#F7F9F8"),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header (ClipPath) dipindahkan ke dalam SingleChildScrollView
-                ClipPath(
-                  clipper: WaveClipper(),
-                  child: Container(
-                    width: double.infinity,
-                    height: 220, // Tinggi ClipPath
-                    color: Colors.blue,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 20, top: 20),
+          RefreshIndicator(
+            onRefresh: () async {
+              await _fetchDashboardData();
+              await _fetchExpenseTypes();
+              await _fetchHistory();
+              await _fetchPieChartData();
+            },
+            child: SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header (ClipPath) dipindahkan ke dalam SingleChildScrollView
+                  ClipPath(
+                    clipper: WaveClipper(),
+                    child: Container(
+                      width: double.infinity,
+                      height: 220, // Tinggi ClipPath
+                      color: Colors.blue,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 20, top: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            // Image.asset(
+                            //   'assets/images/robotLogo.png',
+                            //   width: 120,
+                            //   height: 120,
+                            // ),
+                            SizedBox(height: 10),
+                            Text(
+                              ' Buddy',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 5),
+                  // Bagian atas dengan tombol setting
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 13.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Hi, Kevin",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                " Buddy telah mempelajari pola pengeluaranmu selama ini.",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _showSettings,
+                          icon: Icon(
+                            Icons.settings,
+                            size: 30,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color.fromARGB(255, 62, 137, 198),
+                            const Color.fromARGB(255, 51, 84, 107),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.blue.withOpacity(0.2),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          // Image.asset(
-                          //   'assets/images/robotLogo.png',
-                          //   width: 120,
-                          //   height: 120,
-                          // ),
-                          SizedBox(height: 10),
                           Text(
-                            ' Buddy',
+                            "Level-mu saat ini",
                             style: TextStyle(
-                              fontSize: 28,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: const Color.fromARGB(255, 255, 255, 255),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: _showExpenseLimitsPopup,
+                            child: Text(
+                              "Moderate Saver",
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: 0.6,
+                            backgroundColor: Colors.blue.shade200,
+                            color: Colors.blue.shade900,
+                            minHeight: 10,
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            "Tingkatkan untuk menjadi Professional Saver",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: const Color.fromARGB(255, 255, 255, 255),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                SizedBox(height: 5),
-                // Bagian atas dengan tombol setting
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 13.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  Padding(
+                    padding: const EdgeInsets.only(left: 13.0, top: 16.0),
+                    child: Text(
+                      "Dashboard",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+
+                  // Pindahkan _buildEditableCard ke atas
+                  _buildEditableCard(), // Editable Card di atas
+                  SizedBox(
+                    height: 16,
+                  ), // Beri jarak antara Editable Card dan Target Card
+                  // Target Card di bawah
+                  _buildTargetCard(),
+                  SizedBox(
+                    height: 16,
+                  ), // Beri jarak antara Target Card dan tombol
+
+                  ElevatedButton(
+                    onPressed: _showAddTargetPopup,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 148, 173, 207),
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text(
+                          "Tambah Target",
+                          style: TextStyle(fontSize: 18, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => ChatPage()),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding:
+                          EdgeInsets
+                              .zero, // Padding diatur nol karena akan diatur di child
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          20,
+                        ), // Border radius tombol
+                      ),
+                      backgroundColor:
+                          Colors
+                              .transparent, // Latar belakang tombol transparan
+                      elevation: 10, // Elevasi untuk shadow
+                      side: BorderSide.none, // Hapus border
+                      foregroundColor: Colors.white, // Warna teks
+                      shadowColor: Colors.deepOrange.withOpacity(
+                        0.5,
+                      ), // Warna shadow
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.orange,
+                            Colors.deepOrange,
+                          ], // Gradien warna
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          20,
+                        ), // Border radius yang sama dengan tombol
+                      ),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ), // Padding untuk konten
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            // Image.asset(
+                            //   'assets/images/robotLogo.png', // Gambar robot
+                            //   width: 70,
+                            //   height: 70,
+                            // ),
+                            SizedBox(width: 12), // Jarak antara gambar dan teks
                             Text(
-                              "Hi, Kevin",
+                              "Chat Buddy",
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black.withOpacity(
+                                      0.2,
+                                    ), // Shadow untuk teks
+                                    blurRadius: 2,
+                                    offset: Offset(1, 1),
+                                  ),
+                                ],
                               ),
-                            ),
-                            Text(
-                              " Buddy telah mempelajari pola pengeluaranmu selama ini.",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[700],
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
                             ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: _showSettings,
-                        icon: Icon(
-                          Icons.settings,
-                          size: 30,
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                SizedBox(height: 16),
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  SizedBox(height: 16),
+                  Text(
+                    "Riwayat Pengeluaran",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  child: Container(
-                    padding: EdgeInsets.all(16),
+                  SizedBox(height: 8),
+                  _buildExpensePieChart(),
+                  Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -800,237 +1022,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue.withOpacity(0.2),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Level-mu saat ini",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: const Color.fromARGB(255, 255, 255, 255),
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: _showExpenseLimitsPopup,
-                          child: Text(
-                            "Moderate Saver",
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: 0.6,
-                          backgroundColor: Colors.blue.shade200,
-                          color: Colors.blue.shade900,
-                          minHeight: 10,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          "Tingkatkan untuk menjadi Professional Saver",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: const Color.fromARGB(255, 255, 255, 255),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 13.0, top: 16.0),
-                  child: Text(
-                    "Dashboard",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(height: 8),
-
-                // Pindahkan _buildEditableCard ke atas
-                _buildEditableCard(), // Editable Card di atas
-                SizedBox(
-                  height: 16,
-                ), // Beri jarak antara Editable Card dan Target Card
-                // Target Card di bawah
-                _buildTargetCard(),
-                SizedBox(
-                  height: 16,
-                ), // Beri jarak antara Target Card dan tombol
-
-                ElevatedButton(
-                  onPressed: _showAddTargetPopup,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 148, 173, 207),
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.add, color: Colors.white),
-                      SizedBox(width: 8),
-                      Text(
-                        "Tambah Target",
-                        style: TextStyle(fontSize: 18, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => ChatPage()),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding:
-                        EdgeInsets
-                            .zero, // Padding diatur nol karena akan diatur di child
-                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(
-                        20,
-                      ), // Border radius tombol
+                        8,
+                      ), // Optional: rounded corners
                     ),
-                    backgroundColor:
-                        Colors.transparent, // Latar belakang tombol transparan
-                    elevation: 10, // Elevasi untuk shadow
-                    side: BorderSide.none, // Hapus border
-                    foregroundColor: Colors.white, // Warna teks
-                    shadowColor: Colors.deepOrange.withOpacity(
-                      0.5,
-                    ), // Warna shadow
-                  ),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.orange,
-                          Colors.deepOrange,
-                        ], // Gradien warna
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        20,
-                      ), // Border radius yang sama dengan tombol
-                    ),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 16,
-                      ), // Padding untuk konten
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Image.asset(
-                          //   'assets/images/robotLogo.png', // Gambar robot
-                          //   width: 70,
-                          //   height: 70,
-                          // ),
-                          SizedBox(width: 12), // Jarak antara gambar dan teks
-                          Text(
-                            "Chat Buddy",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black.withOpacity(
-                                    0.2,
-                                  ), // Shadow untuk teks
-                                  blurRadius: 2,
-                                  offset: Offset(1, 1),
-                                ),
-                              ],
-                            ),
+                    padding: EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 16,
+                    ), // Adjust padding as needed
+                    child: Center(
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: TextSpan(
+                          style: TextStyle(
+                            fontSize: 15,
+                            color:
+                                Colors
+                                    .white, // Changed to white for better visibility on gradient
                           ),
-                        ],
+                          children: [
+                            TextSpan(
+                              text: "+0.0%",
+                              style: TextStyle(
+                                color:
+                                    Colors
+                                        .grey[300], // Lighter grey for better contrast
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TextSpan(
+                              text:
+                                  " dari bulan sebelumnya, pengeluaran mu aman",
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  "Riwayat Pengeluaran",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                _buildExpensePieChart(),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color.fromARGB(255, 62, 137, 198),
-                        const Color.fromARGB(255, 51, 84, 107),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(
-                      8,
-                    ), // Optional: rounded corners
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 16,
-                  ), // Adjust padding as needed
-                  child: Center(
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
+                  ...history.map((item) {
+                    return ListTile(
+                      title: Text(item["expense_type_name"] ?? "-"),
+                      subtitle: Text(
+                        "Dibeli pada: ${item["created_at"] ?? "-"}\n"
+                        "Metode: ${item["method"] ?? "-"}",
+                      ),
+                      trailing: Text(
+                        "Rp${item["amount"]?.toString() ?? "0"}",
                         style: TextStyle(
-                          fontSize: 15,
-                          color:
-                              Colors
-                                  .white, // Changed to white for better visibility on gradient
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade900,
                         ),
-                        children: [
-                          TextSpan(
-                            text: "+0.0%",
-                            style: TextStyle(
-                              color:
-                                  Colors
-                                      .grey[300], // Lighter grey for better contrast
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          TextSpan(
-                            text: " dari bulan sebelumnya, pengeluaran mu aman",
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ],
                       ),
-                    ),
-                  ),
-                ),
-                ...purchaseHistory.map((item) {
-                  return ListTile(
-                    title: Text(item["name"]),
-                    subtitle: Text("Dibeli pada: ${DateTime.now().toString()}"),
-                  );
-                }).toList(),
-                SizedBox(height: 80),
-              ],
+                    );
+                  }).toList(),
+                  SizedBox(height: 80),
+                ],
+              ),
             ),
           ),
 
@@ -1093,7 +1141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     } else {
       double saldo =
-          dashboardData?['saldo']?.toDouble() ?? totalAmount.toDouble();
+          dashboardData?['saldo']?['amount'].toDouble() ?? 0.toDouble();
       final formattedSaldo = NumberFormat.currency(
         locale: 'id_ID',
         symbol: 'Rp',
@@ -1164,7 +1212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton(
-                    onPressed: _reduceAmount,
+                    onPressed: _isReduceLoading ? null : _reduceAmount,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade900,
                       padding: EdgeInsets.symmetric(
@@ -1176,17 +1224,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       elevation: 5,
                     ),
-                    child: Text(
-                      "Kurangi",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
+                    child:
+                        _isReduceLoading
+                            ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : Text(
+                              "Kurangi",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                   ),
                   ElevatedButton(
-                    onPressed: _addAmount,
+                    onPressed: _isAddLoading ? null : _addAmount,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade900,
                       padding: EdgeInsets.symmetric(
@@ -1198,18 +1256,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       elevation: 5,
                     ),
-                    child: Text(
-                      "Tambah",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
+                    child:
+                        _isAddLoading
+                            ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : Text(
+                              "Tambah",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                   ),
                 ],
               ),
-              if (dailyExpenseLimit > 0) _buildDailyLimitWidget(),
+                          if ((dashboardData?['daily_limit'] ?? 0) > 0) _buildDailyLimitWidget(),
             ],
           ),
         ),
@@ -1218,21 +1286,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDailyLimitWidget() {
-    // Calculate total expenses today
-    double todayExpenses = purchaseHistory
-        .where(
-          (expense) =>
-              DateTime.parse(expense["date"]).day == DateTime.now().day &&
-              DateTime.parse(expense["date"]).month == DateTime.now().month &&
-              DateTime.parse(expense["date"]).year == DateTime.now().year,
-        )
-        .fold(0.0, (sum, expense) => sum + expense["amount"].toDouble());
+    double dailyLimit = (dashboardData?['daily_limit'] ?? 0).toDouble();
+    double todayExpenses = (dashboardData?['today_spending'] ?? 0).toDouble();
+    double remaining = dailyLimit - todayExpenses;
+    double progress = dailyLimit > 0 ? todayExpenses / dailyLimit : 0;
 
-    double remaining = dailyExpenseLimit - todayExpenses;
-    double progress =
-        dailyExpenseLimit > 0 ? todayExpenses / dailyExpenseLimit : 0;
-
-    // Fungsi untuk memformat angka dengan titik sebagai pemisah ribuan
     String formatNumber(double number) {
       return number
           .toStringAsFixed(0)
@@ -1329,13 +1387,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               SizedBox(height: 12),
               ...targets.map((target) {
-                double progress = target["saved"] / target["price"];
-                bool isDisabled =
-                    target["disabled"] ?? false; // Cek status disable
+                double progressValue = (target["progress"] ?? 0).toDouble();
+                double priceValue = (target["price"] ?? 1).toDouble();
+                double progress =
+                    priceValue > 0 ? progressValue / priceValue : 0;
+                bool isDisabled = target["disabled"] ?? false;
 
                 return Stack(
                   children: [
-                    // Lapisan abu-abu jika target dinonaktifkan
                     if (isDisabled)
                       Container(
                         decoration: BoxDecoration(
@@ -1348,87 +1407,132 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         ListTile(
                           title: Text(
-                            target["name"],
+                            target["name"] ?? '',
                             style: TextStyle(
-                              fontSize: 18, // Ukuran teks yang lebih besar
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color:
-                                  Colors
-                                      .blue
-                                      .shade900, // Warna teks yang lebih gelap
+                              color: Colors.blue.shade900,
                             ),
                           ),
                           subtitle: Text(
-                            "Terkumpul: Rp${target["saved"].toString().replaceAllMapped(RegExp(r'(?<=\d)(?=(\d{3})+(?!\d))'), (Match m) => '.')} dari Rp${target["price"].toString().replaceAllMapped(RegExp(r'(?<=\d)(?=(\d{3})+(?!\d))'), (Match m) => '.')}",
+                            "Terkumpul: Rp${progressValue.toStringAsFixed(0)} dari Rp${priceValue.toStringAsFixed(0)}",
                             style: TextStyle(
-                              fontSize: 14, // Ukuran teks yang lebih kecil
-                              color:
-                                  Colors
-                                      .blue
-                                      .shade700, // Warna teks yang lebih gelap
+                              fontSize: 14,
+                              color: Colors.blue.shade700,
                             ),
                           ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              isDisabled
-                                  ? Icons.block
-                                  : Icons.block, // Icon berubah sesuai status
-                              color: isDisabled ? Colors.grey : Colors.red,
-                            ),
-                            onPressed: () {
-                              if (isDisabled) {
-                                _showEnableConfirmation(
-                                  targets.indexOf(target),
-                                ); // Tampilkan pop-up konfirmasi enable
-                              } else {
-                                _showDisableConfirmation(
-                                  targets.indexOf(target),
-                                ); // Tampilkan pop-up konfirmasi disable
-                              }
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  isDisabled ? Icons.block : Icons.block,
+                                  color: isDisabled ? Colors.grey : Colors.red,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    target["disabled"] =
+                                        !(target["disabled"] ?? false);
+                                  });
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder:
+                                        (context) => AlertDialog(
+                                          title: Text("Hapus Target"),
+                                          content: Text(
+                                            "Yakin ingin menghapus target ini?",
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.pop(
+                                                    context,
+                                                    false,
+                                                  ),
+                                              child: Text("Batal"),
+                                            ),
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.pop(
+                                                    context,
+                                                    true,
+                                                  ),
+                                              child: Text(
+                                                "Hapus",
+                                                style: TextStyle(
+                                                  color: Colors.red,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                  );
+                                  if (confirm == true) {
+                                    try {
+                                      await ApiService().deleteTarget(
+                                        target['id'].toString(),
+                                      );
+                                      await _fetchDashboardData();
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Target berhasil dihapus!",
+                                          ),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Gagal menghapus target.",
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
                           ),
                           onTap: () {
                             if (!isDisabled) {
-                              _showAddProgressPopup(
-                                targets.indexOf(target),
-                              ); // Tampilkan pop-up tambah progress
+                              _showAddProgressPopup(targets.indexOf(target));
                             }
                           },
                         ),
                         SizedBox(height: 8),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            10,
-                          ), // Border radius untuk progress bar
+                          borderRadius: BorderRadius.circular(10),
                           child: LinearProgressIndicator(
-                            value: progress,
+                            value: progress > 1 ? 1 : progress,
                             backgroundColor: const Color.fromARGB(
                               255,
                               154,
                               80,
                               80,
-                            ), // Warna latar belakang progress bar
+                            ),
                             color:
                                 isDisabled
                                     ? Colors.grey
-                                    : const Color.fromARGB(
-                                      255,
-                                      43,
-                                      120,
-                                      72,
-                                    ), // Warna progress bar
-                            minHeight: 10, // Tinggi progress bar
+                                    : const Color.fromARGB(255, 43, 120, 72),
+                            minHeight: 10,
                           ),
                         ),
                         SizedBox(height: 8),
                         Text(
                           "${(progress * 100).toStringAsFixed(0)}%/100%",
                           style: TextStyle(
-                            fontSize: 14, // Ukuran teks yang lebih kecil
-                            color:
-                                Colors
-                                    .blue
-                                    .shade700, // Warna teks yang lebih gelap
+                            fontSize: 14,
+                            color: Colors.blue.shade700,
                           ),
                         ),
                         if (progress >= 1 && !isDisabled)
@@ -1436,28 +1540,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             onPressed: () {
                               _showPurchaseConfirmation(
                                 targets.indexOf(target),
-                              ); // Tampilkan konfirmasi pembelian
+                              );
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Colors.blue.shade900, // Warna tombol
+                              backgroundColor: Colors.blue.shade900,
                               padding: EdgeInsets.symmetric(
                                 vertical: 12,
                                 horizontal: 24,
-                              ), // Padding yang lebih besar
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  12,
-                                ), // Border radius tombol
                               ),
-                              elevation: 5, // Shadow untuk tombol
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 5,
                             ),
                             child: Text(
                               "Beli Sekarang",
                               style: TextStyle(
-                                fontSize: 16, // Ukuran teks yang lebih besar
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white, // Warna teks tombol
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -1475,9 +1576,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showScanPopup() {
-    final TextEditingController _amountController =
-        TextEditingController(); // Controller untuk nominal pembelian
-
+    final TextEditingController _amountController = TextEditingController();
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1513,9 +1612,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onPressed: () {
                   if (_amountController.text.isNotEmpty) {
                     Navigator.of(context).pop(); // Tutup pop-up scan
-                    _showPinInputForPayment(
-                      _amountController.text,
-                    ); // Tampilkan pop-up PIN untuk pembayaran
+                    _showExpenseTypeSelection(_amountController.text);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1534,140 +1631,120 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan pop-up input PIN untuk pembayaran
-  void _showPinInputForPayment(String amount) {
-    final TextEditingController _pinController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Masukkan PIN",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: _pinController,
-                keyboardType: TextInputType.number,
-                obscureText: true, // Menyembunyikan teks (untuk PIN)
-                decoration: InputDecoration(
-                  labelText: "PIN",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_pinController.text.isNotEmpty) {
-                    // Ambil PIN yang tersimpan
-                    final savedPin = await _getPin();
-
-                    // Bandingkan PIN yang dimasukkan dengan PIN yang tersimpan
-                    if (_pinController.text == savedPin) {
-                      Navigator.of(context).pop(); // Tutup pop-up input PIN
-                      _completePayment(amount); // Selesaikan pembayaran
-                    } else {
-                      // Tampilkan pesan error jika PIN salah
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("PIN salah. Pembayaran dibatalkan."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  } else {
-                    // Tampilkan pesan error jika PIN kosong
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Silakan masukkan PIN."),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
-                child: Text("Verifikasi PIN"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Fungsi untuk menyelesaikan pembayaran
-  void _completePayment(String amount) async {
-    int paymentAmount = int.tryParse(amount) ?? 0;
-
-    if (paymentAmount > 0 && totalAmount >= paymentAmount) {
-      setState(() {
-        totalAmount -= paymentAmount; // Kurangi saldo
-      });
-
-      // Tampilkan pop-up kategori pengeluaran setelah pembayaran berhasil
-      _showCategoryPopup(
-        paymentAmount,
-      ); // Tambahkan parameter nominal pembayaran
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Saldo tidak cukup untuk melakukan pembayaran."),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  // Modifikasi fungsi _showCategoryPopup untuk menerima nominal pembayaran
-  void _showCategoryPopup(int paymentAmount) {
+  void _showExpenseTypeSelection(String amount) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
           title: Text("Pilih Kategori Pengeluaran"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children:
-                expenseTypes.map((category) {
-                  return ListTile(
-                    title: Text(category),
-                    onTap: () {
-                      Navigator.of(context).pop(); // Tutup pop-up kategori
-                      _addToPurchaseHistory(
-                        category,
-                        paymentAmount,
-                      ); // Tambahkan ke riwayat pembelian
-                    },
-                  );
-                }).toList(),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children:
+                  expenseTypes.map((type) {
+                    return ListTile(
+                      leading: Icon(
+                        Icons.category,
+                        color: expenseTypeColors[type['name']] ?? Colors.blue,
+                      ),
+                      title: Text(type['name']),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showPinInputForQris(amount, type['id']);
+                      },
+                    );
+                  }).toList(),
+            ),
           ),
         );
       },
     );
   }
 
-  // Modifikasi fungsi _addToPurchaseHistory untuk menambahkan nominal pembayaran
-  void _addToPurchaseHistory(String category, int paymentAmount) {
-    setState(() {
-      purchaseHistory.add({
-        "name": "Pembelian $category",
-        "amount": paymentAmount,
-        "date": DateTime.now().toString(),
-        "category": category, // Tambahkan kategori
-      });
-    });
+  void _showPinInputForQris(String amount, String expenseTypeId) {
+    final TextEditingController _pinController = TextEditingController();
+    bool isLoading = false;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "Pembelian $category sebesar Rp${paymentAmount.toString().replaceAllMapped(RegExp(r'(?<=\d)(?=(\d{3})+(?!\d))'), (Match m) => '.')} berhasil ditambahkan!",
-        ),
-        duration: Duration(seconds: 2),
-      ),
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("Masukkan PIN"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: "PIN",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : () async {
+                              if (_pinController.text.isNotEmpty) {
+                                setStateDialog(() => isLoading = true);
+                                try {
+                                  await ApiService().scanQrisPayment(
+                                    amount: amount,
+                                    pin: _pinController.text,
+                                    expenseTypeId: expenseTypeId,
+                                  );
+                                  Navigator.of(context).pop();
+                                  await _fetchDashboardData();
+                                  await _fetchHistory();
+                                  await _fetchPieChartData();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Pembayaran QRIS berhasil!",
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Pembayaran QRIS gagal."),
+                                    ),
+                                  );
+                                } finally {
+                                  setStateDialog(() => isLoading = false);
+                                }
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Silakan masukkan PIN."),
+                                  ),
+                                );
+                              }
+                            },
+                    child:
+                        isLoading
+                            ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : Text("Verifikasi & Bayar"),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1680,250 +1757,574 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16), // Sudut yang melengkung
-          ),
-          elevation: 10, // Shadow yang lebih menonjol
-          child: Container(
-            padding: EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blue.shade50, Colors.white], // Gradien warna
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            bool isLoading = false;
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Text(
-                      "Pengaturan",
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade900,
-                      ),
-                    ),
+              elevation: 10,
+              child: Container(
+                padding: EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade50, Colors.white],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  SizedBox(height: 20),
-                  Text(
-                    "Tipe Pengeluaran",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  ...expenseTypes.map((type) {
-                    return Card(
-                      margin: EdgeInsets.symmetric(vertical: 4),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.circle,
-                          color: expenseTypeColors[type],
-                        ),
-                        title: Text(type, style: TextStyle(fontSize: 16)),
-                        trailing: IconButton(
-                          icon: Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () {
-                            // Tambahkan logika untuk mengedit tipe pengeluaran
-                          },
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  SizedBox(height: 16),
-                  TextField(
-                    controller: _expenseTypeController,
-                    decoration: InputDecoration(
-                      labelText: "Tambah Tipe Pengeluaran",
-                      labelStyle: TextStyle(color: Colors.blue.shade800),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.blue),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.blue.shade900),
-                      ),
-                      prefixIcon: Icon(Icons.category, color: Colors.blue),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    "Pilih Warna",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8.0,
-                    runSpacing: 8.0,
-                    children:
-                        availableColors.map((color) {
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                selectedColor = color;
-                              });
-                            },
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color:
-                                      selectedColor == color
-                                          ? Colors.black
-                                          : Colors.transparent,
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    "Batas Nominal Pengeluaran Harian",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: _dailyLimitController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: "Masukkan Batas Harian",
-                      labelStyle: TextStyle(color: Colors.blue.shade800),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.blue),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.blue.shade900),
-                      ),
-                      prefixIcon: Icon(Icons.attach_money, color: Colors.blue),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop(); // Tutup dialog pengaturan
-                        _showPinSettings(); // Tampilkan dialog pengaturan PIN
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade900,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: Text(
-                        "Atur PIN",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop(); // Tutup pop-up setting
-                        },
+                      Center(
                         child: Text(
-                          "Batal",
+                          "Pengaturan",
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                             color: Colors.blue.shade900,
                           ),
                         ),
                       ),
-                      SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Simpan perubahan tipe pengeluaran dan batas harian
-                          setState(() {
-                            if (_expenseTypeController.text.isNotEmpty &&
-                                selectedColor != null) {
-                              expenseTypes.add(_expenseTypeController.text);
-                              expenseTypeColors[_expenseTypeController.text] =
-                                  selectedColor!;
-                              availableColors.remove(
-                                selectedColor,
-                              ); // Hapus warna yang sudah dipilih
-                            }
-                            if (_dailyLimitController.text.isNotEmpty) {
-                              dailyExpenseLimit =
-                                  double.tryParse(_dailyLimitController.text) ??
-                                  0;
-                            }
-                          });
-                          Navigator.of(context).pop(); // Tutup pop-up setting
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue.shade900,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
+                      SizedBox(height: 20),
+                      Text(
+                        "Tipe Pengeluaran",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      ...expenseTypes.map((type) {
+                        return Card(
+                          margin: EdgeInsets.symmetric(vertical: 4),
+                          elevation: 2,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          elevation: 5,
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.circle,
+                              color:
+                                  expenseTypeColors[type['name']] ??
+                                  Colors.grey,
+                            ),
+                            title: Text(
+                              type['name'],
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () {
+                                    final TextEditingController
+                                    editNameController = TextEditingController(
+                                      text: type['name'],
+                                    );
+                                    final TextEditingController
+                                    editLimitController = TextEditingController(
+                                      text: type['daily_limit'].toString(),
+                                    );
+                                    Color? editSelectedColor =
+                                        expenseTypeColors[type['name']] ??
+                                        Colors.blue;
+
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) {
+                                        bool isEditLoading = false;
+                                        return StatefulBuilder(
+                                          builder: (
+                                            context,
+                                            setStateEditDialog,
+                                          ) {
+                                            return AlertDialog(
+                                              title: Text(
+                                                "Edit Tipe Pengeluaran",
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  TextField(
+                                                    controller:
+                                                        editNameController,
+                                                    decoration: InputDecoration(
+                                                      labelText: "Nama Tipe",
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 12),
+                                                  TextField(
+                                                    controller:
+                                                        editLimitController,
+                                                    keyboardType:
+                                                        TextInputType.number,
+                                                    decoration: InputDecoration(
+                                                      labelText: "Limit Harian",
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 12),
+                                                  Wrap(
+                                                    spacing: 8.0,
+                                                    children:
+                                                        availableColors.map((
+                                                          color,
+                                                        ) {
+                                                          return GestureDetector(
+                                                            onTap: () {
+                                                              setStateEditDialog(
+                                                                () {
+                                                                  editSelectedColor =
+                                                                      color;
+                                                                },
+                                                              );
+                                                            },
+                                                            child: Container(
+                                                              width: 32,
+                                                              height: 32,
+                                                              decoration: BoxDecoration(
+                                                                color: color,
+                                                                shape:
+                                                                    BoxShape
+                                                                        .circle,
+                                                                border: Border.all(
+                                                                  color:
+                                                                      editSelectedColor ==
+                                                                              color
+                                                                          ? Colors
+                                                                              .black
+                                                                          : Colors
+                                                                              .transparent,
+                                                                  width: 2,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          );
+                                                        }).toList(),
+                                                  ),
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed:
+                                                      () => Navigator.pop(
+                                                        context,
+                                                      ),
+                                                  child: Text(
+                                                    "Batal",
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color:
+                                                          Colors.blue.shade900,
+                                                    ),
+                                                  ),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed:
+                                                      isEditLoading
+                                                          ? null
+                                                          : () async {
+                                                            setStateEditDialog(
+                                                              () =>
+                                                                  isEditLoading =
+                                                                      true,
+                                                            );
+                                                            try {
+                                                              await ApiService().updateExpenseType(
+                                                                type['id'],
+                                                                {
+                                                                  "expense_type":
+                                                                      editNameController
+                                                                          .text,
+                                                                  "color":
+                                                                      '#${(editSelectedColor ?? Colors.blue).value.toRadixString(16).substring(2)}',
+                                                                  "daily_limit":
+                                                                      editLimitController
+                                                                          .text,
+                                                                },
+                                                              );
+                                                              await _fetchExpenseTypes();
+                                                              setStateDialog(
+                                                                () {},
+                                                              );
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text(
+                                                                    "Tipe pengeluaran berhasil diubah!",
+                                                                  ),
+                                                                ),
+                                                              );
+                                                              Navigator.pop(
+                                                                context,
+                                                              );
+                                                            } catch (e) {
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text(
+                                                                    "Gagal mengubah tipe pengeluaran.",
+                                                                  ),
+                                                                ),
+                                                              );
+                                                            } finally {
+                                                              setStateEditDialog(
+                                                                () =>
+                                                                    isEditLoading =
+                                                                        false,
+                                                              );
+                                                            }
+                                                          },
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                        backgroundColor:
+                                                            Colors
+                                                                .blue
+                                                                .shade900,
+                                                      ),
+                                                  child:
+                                                      isEditLoading
+                                                          ? SizedBox(
+                                                            width: 20,
+                                                            height: 20,
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                  color:
+                                                                      Colors
+                                                                          .white,
+                                                                  strokeWidth:
+                                                                      2,
+                                                                ),
+                                                          )
+                                                          : Text(
+                                                            "Simpan",
+                                                            style: TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder:
+                                          (context) => AlertDialog(
+                                            title: Text(
+                                              "Hapus Tipe Pengeluaran",
+                                            ),
+                                            content: Text(
+                                              "Yakin ingin menghapus tipe pengeluaran ini?",
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      false,
+                                                    ),
+                                                child: Text("Batal"),
+                                              ),
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      true,
+                                                    ),
+                                                child: Text(
+                                                  "Hapus",
+                                                  style: TextStyle(
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                    );
+                                    if (confirm == true) {
+                                      try {
+                                        await ApiService().deleteExpenseType(
+                                          type['id'],
+                                        );
+                                        await _fetchExpenseTypes();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              "Tipe pengeluaran berhasil dihapus!",
+                                            ),
+                                          ),
+                                        );
+                                        Navigator.of(
+                                          context,
+                                        ).pop(); // Tutup modal pengaturan setelah sukses hapus
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              "Gagal menghapus tipe pengeluaran.",
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                      SizedBox(height: 16),
+                      TextField(
+                        controller: _expenseTypeController,
+                        decoration: InputDecoration(
+                          labelText: "Tambah Tipe Pengeluaran",
+                          labelStyle: TextStyle(color: Colors.blue.shade800),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.blue),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.blue.shade900),
+                          ),
+                          prefixIcon: Icon(Icons.category, color: Colors.blue),
                         ),
-                        child: Text(
-                          "Simpan",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        "Pilih Warna",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 8.0,
+                        children:
+                            availableColors.map((color) {
+                              return GestureDetector(
+                                onTap: () {
+                                  setStateDialog(() {
+                                    selectedColor = color;
+                                  });
+                                },
+                                child: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color:
+                                          selectedColor == color
+                                              ? Colors.black
+                                              : Colors.transparent,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 4,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        "Batas Nominal Pengeluaran Harian",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      TextField(
+                        controller: _dailyLimitController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: "Masukkan Batas Harian",
+                          labelStyle: TextStyle(color: Colors.blue.shade800),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.blue),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.blue.shade900),
+                          ),
+                          prefixIcon: Icon(
+                            Icons.attach_money,
+                            color: Colors.blue,
                           ),
                         ),
                       ),
+                      SizedBox(height: 20),
+                      Center(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _showPinSettings();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade900,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: 5,
+                          ),
+                          child: Text(
+                            "Atur PIN",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            child: Text(
+                              "Batal",
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed:
+                                isLoading
+                                    ? null
+                                    : () async {
+                                      if (_expenseTypeController
+                                              .text
+                                              .isNotEmpty &&
+                                          selectedColor != null) {
+                                        setStateDialog(() => isLoading = true);
+                                        try {
+                                          await ApiService().addExpenseType({
+                                            "expense_type":
+                                                _expenseTypeController.text,
+                                            "color":
+                                                '#${selectedColor!.value.toRadixString(16).substring(2)}',
+                                            "daily_limit":
+                                                _dailyLimitController.text,
+                                          });
+                                          await _fetchExpenseTypes();
+                                          _expenseTypeController.clear();
+                                          _dailyLimitController.clear();
+                                          selectedColor = null;
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                "Tipe pengeluaran berhasil ditambah!",
+                                              ),
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                "Gagal menambah tipe pengeluaran.",
+                                              ),
+                                            ),
+                                          );
+                                        } finally {
+                                          setStateDialog(
+                                            () => isLoading = false,
+                                          );
+                                          Navigator.of(context).pop();
+                                        }
+                                      }
+                                    },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade900,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 5,
+                            ),
+                            child:
+                                isLoading
+                                    ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                    : Text(
+                                      "Simpan",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -1932,121 +2333,123 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showPinSettings() {
     final TextEditingController _oldPinController = TextEditingController();
     final TextEditingController _newPinController = TextEditingController();
+    bool isPinLoading = false;
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return FutureBuilder<String?>(
-          future: _getPin(), // Ambil PIN yang tersimpan
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(
-                child: CircularProgressIndicator(),
-              ); // Tampilkan loading indicator
-            }
-
-            final savedPin = snapshot.data; // Ambil nilai PIN yang tersimpan
-            print("Saved PIN: $savedPin"); // Debugging: Cetak nilai savedPin
+        return StatefulBuilder(
+          builder: (context, setStatePinDialog) {
+            bool hasPin =
+                true; // Anggap user sudah punya PIN, atau cek dari API jika perlu
 
             return AlertDialog(
               title: Text("Atur PIN"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Tampilkan field PIN lama hanya jika sudah ada PIN yang tersimpan
-                  if (savedPin != null) ...[
+                  if (hasPin) ...[
                     TextField(
                       controller: _oldPinController,
                       keyboardType: TextInputType.number,
-                      obscureText: true, // Menyembunyikan teks (untuk PIN lama)
+                      obscureText: true,
                       decoration: InputDecoration(
                         labelText: "Masukkan PIN Lama",
                       ),
                     ),
-                    SizedBox(height: 8), // Tambahkan jarak antara field
+                    SizedBox(height: 8),
                   ],
-                  // Field untuk memasukkan PIN baru
                   TextField(
                     controller: _newPinController,
                     keyboardType: TextInputType.number,
-                    obscureText: true, // Menyembunyikan teks (untuk PIN baru)
-                    decoration: InputDecoration(
-                      labelText:
-                          savedPin == null
-                              ? "Masukkan PIN Baru"
-                              : "Masukkan PIN Baru",
-                    ),
+                    obscureText: true,
+                    decoration: InputDecoration(labelText: "Masukkan PIN Baru"),
                   ),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.of(context).pop(); // Tutup dialog pengaturan PIN
+                    Navigator.of(context).pop();
                   },
                   child: Text("Cancel"),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    // Jika belum ada PIN yang tersimpan
-                    if (savedPin == null) {
-                      // Izinkan pengguna mengatur PIN baru tanpa validasi PIN lama
-                      if (_newPinController.text.isNotEmpty) {
-                        await _savePin(
-                          _newPinController.text,
-                        ); // Simpan PIN baru
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("PIN berhasil diatur."),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                        Navigator.of(
-                          context,
-                        ).pop(); // Tutup dialog pengaturan PIN
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("Silakan masukkan PIN baru."),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                      return; // Hentikan proses
-                    }
-
-                    // Jika sudah ada PIN yang tersimpan, validasi PIN lama
-                    if (_oldPinController.text != savedPin) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("PIN lama salah. Silakan coba lagi."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      return; // Hentikan proses jika PIN lama salah
-                    }
-
-                    // Simpan PIN baru jika diisi
-                    if (_newPinController.text.isNotEmpty) {
-                      await _savePin(_newPinController.text); // Simpan PIN baru
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("PIN berhasil diubah."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Silakan masukkan PIN baru."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-
-                    Navigator.of(context).pop(); // Tutup dialog pengaturan PIN
-                  },
-                  child: Text("Simpan"),
+                ElevatedButton(
+                  onPressed:
+                      isPinLoading
+                          ? null
+                          : () async {
+                            if (_newPinController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Silakan masukkan PIN baru."),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                              return;
+                            }
+                            if (hasPin) {
+                              setStatePinDialog(() => isPinLoading = true);
+                              bool isValid = false;
+                              try {
+                                isValid = await ApiService().validatePin(
+                                  _oldPinController.text,
+                                );
+                              } catch (e) {
+                                isValid = false;
+                              }
+                              if (!isValid) {
+                                setStatePinDialog(() => isPinLoading = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "PIN lama salah. Silakan coba lagi.",
+                                    ),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                                return;
+                              }
+                            }
+                            setStatePinDialog(() => isPinLoading = true);
+                            try {
+                              await ApiService().setPin(
+                                _newPinController.text,
+                                _newPinController.text,
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    hasPin
+                                        ? "PIN berhasil diubah."
+                                        : "PIN berhasil diatur.",
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                              Navigator.of(context).pop();
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Gagal mengatur PIN."),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            } finally {
+                              setStatePinDialog(() => isPinLoading = false);
+                            }
+                          },
+                  child:
+                      isPinLoading
+                          ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : Text("Simpan"),
                 ),
               ],
             );
@@ -2056,274 +2459,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _showDisableConfirmation(int index) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Konfirmasi"),
-          content: Text(
-            "Apakah Anda yakin ingin menonaktifkan auto budgeting untuk target ini?",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Tutup dialog
-              },
-              child: Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  targets[index]["disabled"] = true; // Nonaktifkan target
-                });
-                Navigator.of(context).pop(); // Tutup dialog
-              },
-              child: Text("Lanjutkan"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showEnableConfirmation(int index) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Konfirmasi"),
-          content: Text(
-            "Apakah Anda yakin ingin mengaktifkan kembali target ini?",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Tutup dialog
-              },
-              child: Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  targets[index]["disabled"] = false; // Aktifkan target
-                });
-                Navigator.of(context).pop(); // Tutup dialog
-              },
-              child: Text("Lanjutkan"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _reduceAmount() {
-    if (_amountController.text.isNotEmpty) {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text("Konfirmasi"),
-            content: Text("Saldo dompet tabungan akan ditarik tunai"),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup dialog
-                },
-                child: Text("Cancel"),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup dialog pertama
-                  _showBiometricPopupForReduction(); // Tampilkan pop-up sidik jari
-                },
-                child: Text("Lanjutkan"),
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-
-  // Fungsi untuk menampilkan pop-up sidik jari untuk pengurangan saldo
-  void _showBiometricPopupForReduction() {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Verifikasi Sidik Jari",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              // Image.asset(
-              //   'assets/images/fingerprint.png', // Gambar sidik jari
-              //   width: 100,
-              //   height: 100,
-              // ),
-              SizedBox(height: 16),
-              Text(
-                "Silakan letakkan jari Anda pada sensor sidik jari.",
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup pop-up sidik jari
-                  _completeReductionTransaction(); // Selesaikan transaksi pengurangan
-                },
-                child: Text("Verifikasi Sidik Jari"),
-              ),
-              SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Tutup pop-up sidik jari
-                  _showPinInputPopupForReduction(); // Tampilkan pop-up input PIN
-                },
-                child: Text(
-                  "Ganti ke Ketik PIN",
-                  style: TextStyle(fontSize: 14, color: Colors.blue),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Fungsi untuk menampilkan pop-up input PIN untuk pengurangan saldo
-  void _showPinInputPopupForReduction() {
-    final TextEditingController _pinController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Masukkan PIN",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: _pinController,
-                keyboardType: TextInputType.number,
-                obscureText: true, // Menyembunyikan teks (untuk PIN)
-                decoration: InputDecoration(
-                  labelText: "PIN",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_pinController.text.isNotEmpty) {
-                    // Ambil PIN yang tersimpan
-                    final savedPin = await _getPin();
-
-                    // Bandingkan PIN yang dimasukkan dengan PIN yang tersimpan
-                    if (_pinController.text == savedPin) {
-                      Navigator.of(context).pop(); // Tutup pop-up input PIN
-                      _completeReductionTransaction(); // Selesaikan transaksi pengurangan
-                    } else {
-                      // Tampilkan pesan error jika PIN salah
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("PIN salah. Transaksi dibatalkan."),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  } else {
-                    // Tampilkan pesan error jika PIN kosong
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Silakan masukkan PIN."),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
-                child: Text("Verifikasi PIN"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Fungsi untuk menyelesaikan transaksi pengurangan saldo
-  void _completeReductionTransaction() {
-    setState(() {
-      int amount = int.tryParse(_amountController.text) ?? 0;
-      if (totalAmount >= amount) {
-        totalAmount -= amount;
-        // Kurangi saldo dompet tabungan (asumsi ada variabel untuk saldo dompet tabungan)
-        // Misalnya: walletBalance -= amount;
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Saldo tidak cukup!"),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    });
-    _amountController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Transaksi berhasil!"),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
   Widget _buildExpensePieChart() {
-    // Debug: Cetak seluruh purchaseHistory untuk verifikasi
-    debugPrint('Purchase History: ${purchaseHistory.toString()}');
-
-    // Kelompokkan data berdasarkan kategori
-    final Map<String, double> categoryTotals = {};
-
-    for (final expense in purchaseHistory) {
-      final category = expense['category'] ?? 'Lainnya';
-      final amount = (expense['amount'] ?? expense['price'] ?? 0).toDouble();
-
-      if (amount > 0) {
-        categoryTotals.update(
-          category,
-          (value) => value + amount,
-          ifAbsent: () => amount,
-        );
-      }
-    }
-
-    // Debug: Cetak total per kategori
-    debugPrint('Category Totals: ${categoryTotals.toString()}');
-
-    // Jika tidak ada data
-    if (categoryTotals.isEmpty) {
+    // Jika belum ada data
+    if (pieChartData.isEmpty || pieChartData.values.every((v) => v == 0)) {
       return Center(child: Text('Belum ada data pengeluaran'));
     }
 
     // Buat sections untuk pie chart
+    final total = pieChartData.values.fold(0.0, (a, b) => a + b);
     final pieSections =
-        categoryTotals.entries.map((entry) {
+        pieChartData.entries.map((entry) {
           final category = entry.key;
           final value = entry.value;
-          final total = categoryTotals.values.reduce((a, b) => a + b);
-          final percentage = (value / total) * 100;
+          final percentage = total > 0 ? (value / total) * 100 : 0.0;
 
           return PieChartSectionData(
             color: expenseTypeColors[category] ?? Colors.grey,
@@ -2347,21 +2495,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             PieChartData(
               sections: pieSections,
               centerSpaceRadius: 40,
-              sectionsSpace: 0, // Hilangkan jarak antar section
+              sectionsSpace: 0,
             ),
           ),
         ),
         SizedBox(height: 16),
-        _buildLegend(categoryTotals),
-        SizedBox(height: 8), // Tambahkan jarak antara legenda dan teks
+        _buildLegend(pieChartData),
+        SizedBox(height: 8),
       ],
     );
   }
 
   Widget _buildLegend(Map<String, double> expenseTotals) {
     return Wrap(
-      spacing: 8.0, // Jarak horizontal antara item
-      runSpacing: 4.0, // Jarak vertikal antara baris
+      spacing: 8.0,
+      runSpacing: 4.0,
       children:
           expenseTotals.entries.map((entry) {
             String category = entry.key;
@@ -2385,191 +2533,245 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showExpenseLimitsPopup() {
-    // Calculate remaining amounts for each expense type
-    Map<String, double> remainingAmounts = {};
-
-    for (var type in expenseTypes) {
-      double spent = purchaseHistory
-          .where((expense) => expense['category'] == type)
-          .fold(
-            0.0,
-            (sum, expense) => sum + (expense['amount'] ?? 0).toDouble(),
-          );
-
-      remainingAmounts[type] = (categoryLimits[type] ?? 0) - spent;
-    }
-
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 4,
-          child: Container(
-            padding: EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.blue.shade50, Colors.blue.shade100],
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            if (expenseTypes.isEmpty) {
+              return Dialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 4,
+                child: Container(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Limit Pengeluaran per Bulan",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+              elevation: 4,
+              child: Container(
+                padding: EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.blue.shade50, Colors.blue.shade100],
                   ),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                SizedBox(height: 16),
-                Divider(color: Colors.blue.shade300),
-                SizedBox(height: 8),
-                ...expenseTypes.map((type) {
-                  double remaining = remainingAmounts[type] ?? 0;
-                  bool isOverLimit = remaining < 0;
-
-                  return Container(
-                    margin: EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200, width: 1),
-                    ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: expenseTypeColors[type]?.withOpacity(0.3),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.category,
-                          color: expenseTypeColors[type],
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        type,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Text(
-                        isOverLimit
-                            ? "Melebihi limit: Rp${(-remaining).toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}"
-                            : "Sisa: Rp${remaining.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}",
-                        style: TextStyle(
-                          color:
-                              isOverLimit ? Colors.red.shade700 : Colors.black,
-                          fontWeight:
-                              isOverLimit ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(Icons.edit, color: Colors.blue.shade700),
-                        onPressed: () {
-                          _showEditExpenseLimitDialog(type);
-                        },
-                      ),
-                    ),
-                  );
-                }).toList(),
-                SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue.shade100,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      "Tutup",
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Limit Pengeluaran per Hari",
                       style: TextStyle(
-                        color: Colors.blue.shade800,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
+                        color: Colors.black,
                       ),
                     ),
-                  ),
+                    SizedBox(height: 16),
+                    Divider(color: Colors.blue.shade300),
+                    SizedBox(height: 8),
+                    ...expenseTypes.map((type) {
+                      final String name = type['name'];
+                      final double dailyLimit =
+                          (type['daily_limit'] ?? 0).toDouble();
+                      final double totalSpent =
+                          (type['total_spent'] ?? 0).toDouble();
+                      final double remaining = dailyLimit - totalSpent;
+                      final bool isOverLimit = remaining < 0;
+
+                      return Container(
+                        margin: EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.blue.shade200,
+                            width: 1,
+                          ),
+                        ),
+                        child: ListTile(
+                          leading: Container(
+                            padding: EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: expenseTypeColors[name]?.withOpacity(0.3),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.category,
+                              color: expenseTypeColors[name],
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            name,
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(
+                            isOverLimit
+                                ? "Melebihi limit: Rp${(-remaining).toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}"
+                                : "Sisa: Rp${remaining.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}",
+                            style: TextStyle(
+                              color:
+                                  isOverLimit
+                                      ? Colors.red.shade700
+                                      : Colors.black,
+                              fontWeight:
+                                  isOverLimit
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: Icon(Icons.edit, color: Colors.blue.shade700),
+                            onPressed: () {
+                              final TextEditingController limitController =
+                                  TextEditingController(
+                                    text: dailyLimit.toStringAsFixed(0),
+                                  );
+                              showDialog(
+                                context: context,
+                                builder: (context) {
+                                  bool isLoading = false;
+                                  return StatefulBuilder(
+                                    builder: (context, setStateEditDialog) {
+                                      return AlertDialog(
+                                        title: Text("Edit Limit Harian"),
+                                        content: TextField(
+                                          controller: limitController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: InputDecoration(
+                                            labelText: "Limit Harian (Rp)",
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed:
+                                                () => Navigator.pop(context),
+                                            child: Text("Batal"),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed:
+                                                isLoading
+                                                    ? null
+                                                    : () async {
+                                                      setStateEditDialog(
+                                                        () => isLoading = true,
+                                                      );
+                                                      try {
+                                                        await ApiService()
+                                                            .updateExpenseType(
+                                                              type['id']
+                                                                  .toString(),
+                                                              {
+                                                                "daily_limit":
+                                                                    limitController
+                                                                        .text,
+                                                                "expense_type":
+                                                                    type['name'],
+                                                                "color":
+                                                                    type['color'],
+                                                              },
+                                                            );
+                                                        await _fetchExpenseTypes();
+                                                        setStateDialog(
+                                                          () {},
+                                                        ); // <-- refresh dialog limit
+                                                        Navigator.pop(context);
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              "Limit harian berhasil diubah!",
+                                                            ),
+                                                          ),
+                                                        );
+                                                      } catch (e) {
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              "Gagal mengubah limit harian.",
+                                                            ),
+                                                          ),
+                                                        );
+                                                      } finally {
+                                                        setStateEditDialog(
+                                                          () =>
+                                                              isLoading = false,
+                                                        );
+                                                      }
+                                                    },
+                                            child:
+                                                isLoading
+                                                    ? SizedBox(
+                                                      width: 20,
+                                                      height: 20,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            color: Colors.white,
+                                                            strokeWidth: 2,
+                                                          ),
+                                                    )
+                                                    : Text("Simpan"),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.blue.shade100,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(
+                          "Tutup",
+                          style: TextStyle(
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
-
-  void _showEditExpenseLimitDialog(String expenseType) {
-    final TextEditingController _limitController = TextEditingController(
-      text: categoryLimits[expenseType]?.toStringAsFixed(0) ?? '0',
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Atur Limit untuk $expenseType"),
-          content: TextField(
-            controller: _limitController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: "Limit Bulanan (Rp)",
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text("Batal"),
-            ),
-            TextButton(
-              onPressed: () {
-                if (_limitController.text.isNotEmpty) {
-                  setState(() {
-                    categoryLimits[expenseType] =
-                        double.tryParse(_limitController.text) ?? 0;
-                    _saveCategoryLimits(); // Simpan ke SharedPreferences
-                  });
-                  Navigator.pop(context);
-                }
-              },
-              child: Text("Simpan"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _saveCategoryLimits() async {
-    final prefs = await SharedPreferences.getInstance();
-    categoryLimits.forEach((key, value) async {
-      await prefs.setDouble('limit_$key', value);
-    });
-  }
-
-  Future<void> _loadCategoryLimits() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      categoryLimits = Map.fromIterables(
-        expenseTypes,
-        expenseTypes.map((type) => prefs.getDouble('limit_$type') ?? 0),
-      );
-    });
-  }
+  
 }
